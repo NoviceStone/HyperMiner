@@ -160,7 +160,7 @@ def main(args):
                 batch_data = batch_data.float().to(device)
                 with torch.no_grad():
                     _, _, _, thetas = model(batch_data, is_training=False)
-                    # test_feats.append(thetas.cpu().numpy())
+                    # test_feats.append(thetas.cpu().numpy())   # use for ETM
                     test_feats.append(thetas[0].cpu().numpy())
                     test_labels.append(batch_labels.numpy())
             test_feats = np.concatenate(test_feats, axis=0)
@@ -187,19 +187,9 @@ def main(args):
         lr_scheduler.step()
 
     logging.info("Optimization Finished!")
-    # logging.info("Best epoch: {}".format(best_epoch))
     logging.info("Best clustering purity: {:.6f} at epoch {}".format(best_purity, best_purity_epoch))
     logging.info("Best clustering nmi: {:.6f} at epoch {}".format(best_nmi, best_nmi_epoch))
     logging.info("Total time elapsed: {:.4f}s".format(time.time() - t_total))
-
-    # model.load_state_dict(torch.load(
-    #     os.path.join(save_dir, 'ckpt_best.pth'),
-    #     map_location=device
-    # ))
-    # model.eval()
-    # with torch.no_grad():
-    #     phis = model.get_phi()
-    #     visualize_topics(phis, save_dir, vocab)
 
 
 if __name__ == '__main__':
