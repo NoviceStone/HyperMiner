@@ -66,7 +66,8 @@ def main(args):
         initial_embeddings = load_glove_embeddings(args.embed_size, vocab)
     else:
         initial_embeddings = None
-
+    
+    concept_names = None
     if args.add_knowledge:
         with open(args.file_path, 'rb') as f:
             adj, num_topics_list, concept_names = pickle.load(f)
@@ -154,46 +155,47 @@ def main(args):
                                    ]))
 
         if (epoch + 1) % args.eval_freq == 0:
+            model.eval()
+            with torch.no_grad():
+                phis = model.get_phi()
+                # phis, _ = model.get_phi()   # use for HyperMinerKG
+                # phis = [phis.cpu().numpy()]   # use for ETM
+                phis = [phi.cpu().numpy() for phi in phis]
+                corpus = train_loader.dataset.data.toarray()
+            
+                factorial_phi = 1
+                td_all_layers = []
+                tc_all_layers = []
+                for layer_id, phi in enumerate(phis):
+                    factorial_phi = np.dot(factorial_phi, phi)
+                    cur_td = topic_diversity(factorial_phi.T, top_k=25)
+                    cur_tc = topic_coherence(corpus, None, factorial_phi.T, top_k=10)
+                    td_all_layers.append(cur_td)
+                    tc_all_layers.append(cur_tc)
+                    print('Layer {}, \tTD: {:.6f}, \tTC: {:.6f}'.format(layer_id, cur_td, cur_tc))
+            
+                logging.info("Epoch: {:04d}\t Diversity: {}".format(epoch + 1, td_all_layers))
+                logging.info("Epoch: {:04d}\t Coherence: {}".format(epoch + 1, tc_all_layers))
+            
+            if np.mean(td_all_layers) > np.mean(best_diversity):
+                best_diversity = td_all_layers
+                best_diversity_epoch = epoch + 1
+                torch.save(
+                    model.state_dict(),
+                    os.path.join(save_dir, 'ckpt_best_diversity.pth')
+                )
+            if np.mean(tc_all_layers) > np.mean(best_coherence):
+                best_coherence = tc_all_layers
+                best_coherence_epoch = epoch + 1
+                torch.save(
+                    model.state_dict(),
+                    os.path.join(save_dir, 'ckpt_best_coherence.pth')
+                )
+            
             torch.save(
                 model.state_dict(),
                 os.path.join(save_dir, 'ckpt_epoch{}.pth'.format(epoch + 1))
-            )
-            # model.eval()
-            # with torch.no_grad():
-            #     # phis = model.get_phi()
-            #     phis, _ = model.get_phi()
-            #     # phis = [phis.cpu().numpy()]
-            #     phis = [phi.cpu().numpy() for phi in phis]
-            #     corpus = train_loader.dataset.data.toarray()
-            #
-            #     factorial_phi = 1
-            #     td_all_layers = []
-            #     tc_all_layers = []
-            #     for layer_id, phi in enumerate(phis):
-            #         factorial_phi = np.dot(factorial_phi, phi)
-            #         cur_td = topic_diversity(factorial_phi.T, top_k=25)
-            #         cur_tc = topic_coherence(corpus, None, factorial_phi.T, top_k=10)
-            #         td_all_layers.append(cur_td)
-            #         tc_all_layers.append(cur_tc)
-            #         print('Layer {}, \tTD: {:.6f}, \tTC: {:.6f}'.format(layer_id, cur_td, cur_tc))
-            #
-            #     logging.info("Epoch: {:04d}\t Diversity: {}".format(epoch + 1, td_all_layers))
-            #     logging.info("Epoch: {:04d}\t Coherence: {}".format(epoch + 1, tc_all_layers))
-            #
-            # if np.mean(td_all_layers) > np.mean(best_diversity):
-            #     best_diversity = td_all_layers
-            #     best_diversity_epoch = epoch + 1
-            #     torch.save(
-            #         model.state_dict(),
-            #         os.path.join(save_dir, 'ckpt_best_diversity.pth')
-            #     )
-            # if np.mean(tc_all_layers) > np.mean(best_coherence):
-            #     best_coherence = tc_all_layers
-            #     best_coherence_epoch = epoch + 1
-            #     torch.save(
-            #         model.state_dict(),
-            #         os.path.join(save_dir, 'ckpt_best_coherence.pth')
-            #     )
+            )    
 
         lr_scheduler.step()
 
@@ -207,15 +209,10 @@ def main(args):
     logging.info("Best coherence: {} at epoch {}".format(best_coherence, best_coherence_epoch))
     logging.info("Total time elapsed: {:.4f}s".format(time.time() - t_total))
 
-    # save_dir = './logs/20ng/2022_10_3/21'
-    # model.load_state_dict(torch.load(
-    #     os.path.join(save_dir, 'ckpt_best_diversity.pth'),
-    #     map_location=device
-    # ))
     model.eval()
     with torch.no_grad():
-        # phis = model.get_phi()
-        phis, _ = model.get_phi()
+        phis = model.get_phi()
+        # phis, _ = model.get_phi()   # use when running HyperMinerKG
         visualize_topics(phis, save_dir, vocab, concepts=concept_names)
 
 
